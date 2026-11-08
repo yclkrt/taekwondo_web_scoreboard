@@ -1,122 +1,100 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { MatchProvider, useMatch } from './context/MatchContext';
+import { useRealtime } from './hooks/useRealtime';
+import Scoreboard from './components/Scoreboard';
+import MobileController from './components/MobileController';
+import MobileJudge from './components/MobileJudge';
+import './App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
+// Inner component connected to MatchContext
+function AppContent({ role, slot, roomId, realtime }) {
+  const { matchState, setMatchState, handleJudgeAction, applyRemoteCommand } = useMatch();
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+  // Scoreboard registers listeners for incoming judge actions and remote commands
+  useEffect(() => {
+    if (role === 'scoreboard') {
+      realtime.onJudgeAction((data) => {
+        handleJudgeAction(data);
+      });
 
-      <div className="ticks"></div>
+      realtime.onRemoteCommand((cmd) => {
+        applyRemoteCommand(cmd);
+      });
+    } else {
+      // Remote devices (Operator or Judge) listen for state updates from scoreboard
+      realtime.onStateUpdate((updatedState) => {
+        setMatchState(updatedState);
+      });
+    }
+  }, [role, realtime, handleJudgeAction, applyRemoteCommand, setMatchState]);
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+  // Route according to role
+  if (role === 'judge') {
+    return (
+      <MobileJudge
+        roomId={roomId}
+        slot={slot}
+        realtime={realtime}
+        matchState={matchState}
+      />
+    );
+  }
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+  if (role === 'operator') {
+    return (
+      <MobileController
+        roomId={roomId}
+        realtime={realtime}
+        matchState={matchState}
+      />
+    );
+  }
+
+  // Default: Arena Scoreboard
+  return <Scoreboard roomId={roomId} realtime={realtime} />;
 }
 
-export default App
+export default function App() {
+  // Parse URL query parameters
+  const [params, setParams] = useState(() => {
+    const search = typeof window !== 'undefined' ? window.location.search : '';
+    const sp = new URLSearchParams(search);
+    return {
+      role: sp.get('role') || 'scoreboard',
+      slot: sp.get('slot') ? Number(sp.get('slot')) : 1,
+      room: sp.get('room') || 'TKD-1',
+    };
+  });
+
+  // Listen to popstate / url changes
+  useEffect(() => {
+    const handlePopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      setParams({
+        role: sp.get('role') || 'scoreboard',
+        slot: sp.get('slot') ? Number(sp.get('slot')) : 1,
+        room: sp.get('room') || 'TKD-1',
+      });
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Initialize unified realtime hook
+  const realtime = useRealtime({
+    roomId: params.room,
+    role: params.role,
+    slot: params.slot,
+  });
+
+  return (
+    <MatchProvider realtime={realtime}>
+      <AppContent
+        role={params.role}
+        slot={params.slot}
+        roomId={params.room}
+        realtime={realtime}
+      />
+    </MatchProvider>
+  );
+}

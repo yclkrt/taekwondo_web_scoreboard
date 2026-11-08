@@ -438,45 +438,15 @@ export function MatchProvider({ children, realtime }) {
     }));
   }, []);
 
-  // Reset entire match
+  // Reset entire match to default state and clear localStorage
   const resetMatch = useCallback(() => {
-    setMatchState((prev) => ({
-      ...prev,
-      blue: {
-        ...prev.blue,
-        score: 0,
-        roundWins: 0,
-        gamjeom: 0,
-        videoQuota: 1,
-        videoRequested: false,
-        history: [],
-      },
-      red: {
-        ...prev.red,
-        score: 0,
-        roundWins: 0,
-        gamjeom: 0,
-        videoQuota: 1,
-        videoRequested: false,
-        history: [],
-      },
-      timer: {
-        ...prev.timer,
-        seconds: prev.timer.initialSeconds,
-        isRunning: false,
-        isRest: false,
-        isKyeshi: false,
-        kyeshiFighter: null,
-      },
-      round: {
-        current: 1,
-        maxRounds: 3,
-        isGoldenRound: false,
-        winner: null,
-        roundWinner: null,
-      },
-      logs: [],
-    }));
+    // Clear persisted state so a page reload starts fresh
+    try {
+      localStorage.removeItem('tkd_match_state');
+    } catch {
+      // Ignore storage errors
+    }
+    setMatchState(DEFAULT_STATE);
   }, []);
 
   // Update match information (names, category, court)

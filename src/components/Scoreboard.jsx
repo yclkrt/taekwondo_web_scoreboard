@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useMatch } from '../context/MatchContext';
 import { soundManager } from '../utils/sound';
 import {
@@ -40,6 +40,7 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
     updateMatchInfo,
     updateFighters,
     updateSettings,
+    getRemainingSeconds,
   } = useMatch();
 
   // Modals
@@ -103,12 +104,19 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleTimer]);
 
-  // Format seconds into MM:SS
-  const formatTimer = (seconds = 0) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+  // Saniyeyi MM:SS veya (1 dakikanin altinda) SS.cc olarak bicimler.
+  // Centisaniye, kalan surenin ondalik kisimindan hesaplanir -> gercekte akici geri sayim.
+  const formatTimer = useCallback((totalSeconds = 0, showCentiseconds = false) => {
+    const total = Math.max(0, totalSeconds);
+    if (showCentiseconds && total < 60) {
+      const secs = Math.floor(total);
+      const centis = Math.floor((total % 1) * 100);
+      return `${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+    }
+    const mins = Math.floor(total / 60);
+    const secs = Math.floor(total % 60);
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  }, []);
 
   // Extract recent clicks for Blue and Red corner judges (J1, J2, J3)
   const getJudgeStatus = useCallback(
@@ -132,21 +140,36 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
   const isRest = matchState.timer.isRest;
   const winner = matchState.round.winner;
 
-  // Kyeshi aktifse kyeshi süresini, yoksa normal süreyi göster
-  const displaySeconds = isKyeshi && kyeshiBlue
-    ? kyeshiSecondsBlue
-    : isKyeshi && kyeshiRed
-      ? kyeshiSecondsRed
-      : timerSeconds;
+  // Akici timer gorunumu: requestAnimationFrame ile centisaniyelik seri akis.
+  // matchState (veya sunucuya senkron durum) her kare guncellenmez, sadece
+  // gorunen sure degistiginde yeniden render yapilir.
+  const [displaySeconds, setDisplaySeconds] = useState(timerSeconds);
+  const lastRenderedTimerText = useRef('');
+
+  useEffect(() => {
+    let rafId;
+    const loop = () => {
+      const remaining = getRemainingSeconds();
+      const showCentiseconds = remaining < 60;
+      const text = formatTimer(remaining, showCentiseconds);
+      if (text !== lastRenderedTimerText.current) {
+        lastRenderedTimerText.current = text;
+        setDisplaySeconds(remaining);
+      }
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, [getRemainingSeconds, formatTimer]);
 
   // Timer digit styling
   const timerClass = useMemo(() => {
     if (isKyeshi) return 'timer-kyeshi';
-    if (timerSeconds === 0) return 'timer-expired';
-    if (timerSeconds <= 10) return 'timer-danger';
-    if (timerSeconds <= 30) return 'timer-warning';
+    if (displaySeconds <= 0) return 'timer-expired';
+    if (displaySeconds <= 10) return 'timer-danger';
+    if (displaySeconds <= 30) return 'timer-warning';
     return isTimerRunning ? 'timer-running' : 'timer-idle';
-  }, [timerSeconds, isTimerRunning, isKyeshi]);
+  }, [displaySeconds, isTimerRunning, isKyeshi]);
 
   const activeJudgesCount = realtime.activeJudges.filter((j) => j.online).length;
 
@@ -374,13 +397,13 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
               {kyeshiBlue && (
                 <div className="kyeshi-alert-badge kyeshi-blue">
                   <Activity size={18} className="animate-spin" />
-                  <span>DOKTOR / KYESHI - MAVİ ({formatTimer(kyeshiSecondsBlue)})</span>
+                  <span>DOKTOR / KYESHI - MAVİ ({formatTimer(kyeshiSecondsBlue, true)})</span>
                 </div>
               )}
               {kyeshiRed && (
                 <div className="kyeshi-alert-badge kyeshi-red">
                   <Activity size={18} className="animate-spin" />
-                  <span>DOKTOR / KYESHI - KIRMIZI ({formatTimer(kyeshiSecondsRed)})</span>
+                  <span>DOKTOR / KYESHI - KIRMIZI ({formatTimer(kyeshiSecondsRed, true)})</span>
                 </div>
               )}
             </>
@@ -388,7 +411,7 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
 
           {/* Massive Digital LED Timer */}
           <div className={`arena-timer-display ${timerClass}`}>
-            <span className="timer-text">{formatTimer(displaySeconds)}</span>
+            <span className="timer-text">{formatTimer(displaySeconds, displaySeconds < 60)}</span>
           </div>
 
           {/* Primary Arena Control Buttons */}

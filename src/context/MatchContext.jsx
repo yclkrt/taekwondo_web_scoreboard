@@ -106,6 +106,13 @@ export function MatchProvider({ children, realtime }) {
   const [judgeIndicators, setJudgeIndicators] = useState([]);
   const consensusBufferRef = useRef([]);
 
+  // Hassas (alt-saniyelik) sayaç referansları – görüntüde akıcı süre akışı için
+  const timerStartRef = useRef(null);
+  const secondsAtStartRef = useRef(0);
+  const kyeshiStartRef = useRef(null);
+  const kyeshiBlueAtStartRef = useRef(60);
+  const kyeshiRedAtStartRef = useRef(60);
+
   // Save to localStorage
   useEffect(() => {
     try {
@@ -208,39 +215,81 @@ export function MatchProvider({ children, realtime }) {
     return () => clearInterval(interval);
   }, [matchState.timer.isRunning]);
 
+  // Gerçek kalan süreyi milisaniye hassasiyetinde dondurur.
+  // Durdurulmus ikunde son degeri dondurur (gorunen deger donar).
+  const getRemainingSeconds = useCallback(() => {
+    const t = matchState.timer;
+
+    // --- KYESHI SAYACI ---
+    if (t.isKyeshi && (t.kyeshiBlue || t.kyeshiRed)) {
+      if (t.kyeshiBlue) {
+        if (!t.isRunning) return t.kyeshiSecondsBlue;
+        const elapsed = (Date.now() - kyeshiStartRef.current) / 1000;
+        return Math.max(0, kyeshiBlueAtStartRef.current - elapsed);
+      }
+      if (t.kyeshiRed) {
+        if (!t.isRunning) return t.kyeshiSecondsRed;
+        const elapsed = (Date.now() - kyeshiStartRef.current) / 1000;
+        return Math.max(0, kyeshiRedAtStartRef.current - elapsed);
+      }
+    }
+
+    // --- NORMAL / MOLA SÜRESİ ---
+    if (!t.isRunning) return t.seconds;
+    const elapsed = (Date.now() - timerStartRef.current) / 1000;
+    return Math.max(0, secondsAtStartRef.current - elapsed);
+  }, [matchState.timer]);
+
   // Timer controls
   const startTimer = useCallback(() => {
     soundManager.playStart();
-    setMatchState((prev) => ({
-      ...prev,
-      timer: { ...prev.timer, isRunning: true },
-    }));
+    setMatchState((prev) => {
+      const t = prev.timer;
+      const now = Date.now();
+      timerStartRef.current = now;
+      secondsAtStartRef.current = t.seconds;
+      kyeshiStartRef.current = now;
+      kyeshiBlueAtStartRef.current = t.kyeshiSecondsBlue;
+      kyeshiRedAtStartRef.current = t.kyeshiSecondsRed;
+      return { ...prev, timer: { ...t, isRunning: true } };
+    });
   }, []);
 
   const pauseTimer = useCallback(() => {
     soundManager.playPause();
-    setMatchState((prev) => ({
-      ...prev,
-      timer: { ...prev.timer, isRunning: false },
-    }));
-  }, []);
-
-  const toggleTimer = useCallback(() => {
     setMatchState((prev) => {
-      const nextRunning = !prev.timer.isRunning;
-      if (nextRunning) {
-        soundManager.playStart();
-      } else {
-        soundManager.playPause();
+      const t = prev.timer;
+      const now = Date.now();
+      if (t.isRunning) {
+        // Durdurulurken kesikli saniye degeri yerine kesirli kalan suresi kaydet
+        const elapsed = (now - timerStartRef.current) / 1000;
+        secondsAtStartRef.current = Math.max(0, secondsAtStartRef.current - elapsed);
+        timerStartRef.current = now;
+        if (t.isKyeshi) {
+          const ke = (now - kyeshiStartRef.current) / 1000;
+          kyeshiBlueAtStartRef.current = Math.max(0, kyeshiBlueAtStartRef.current - ke);
+          kyeshiRedAtStartRef.current = Math.max(0, kyeshiRedAtStartRef.current - ke);
+          kyeshiStartRef.current = now;
+        }
       }
-      return {
-        ...prev,
-        timer: { ...prev.timer, isRunning: nextRunning },
-      };
+      return { ...prev, timer: { ...t, isRunning: false } };
     });
   }, []);
 
+  const toggleTimer = useCallback(() => {
+    if (matchState.timer.isRunning) {
+      pauseTimer();
+    } else {
+      startTimer();
+    }
+  }, [matchState.timer.isRunning, pauseTimer, startTimer]);
+
   const resetTimer = useCallback(() => {
+    timerStartRef.current = null;
+    secondsAtStartRef.current = 0;
+    kyeshiStartRef.current = null;
+    kyeshiBlueAtStartRef.current = 60;
+    kyeshiRedAtStartRef.current = 60;
     setMatchState((prev) => ({
       ...prev,
       timer: {
@@ -254,10 +303,23 @@ export function MatchProvider({ children, realtime }) {
   }, []);
 
   const setTimerSeconds = useCallback((sec) => {
-    setMatchState((prev) => ({
-      ...prev,
-      timer: { ...prev.timer, seconds: Math.max(0, sec) },
-    }));
+    setMatchState((prev) => {
+      const t = prev.timer;
+      const now = Date.now();
+      if (t.isRunning) {
+        timerStartRef.current = now;
+        secondsAtStartRef.current = Math.max(0, sec);
+        if (t.isKyeshi) {
+          kyeshiStartRef.current = now;
+          kyeshiBlueAtStartRef.current = t.kyeshiSecondsBlue;
+          kyeshiRedAtStartRef.current = t.kyeshiSecondsRed;
+        }
+      }
+      return {
+        ...prev,
+        timer: { ...t, seconds: Math.max(0, sec) },
+      };
+    });
   }, []);
 
   // Medical / Kyeshi timeout (her köşe için bağımsız)
@@ -512,18 +574,28 @@ export function MatchProvider({ children, realtime }) {
 
   // Update rules / settings
   const updateSettings = useCallback((newSettings) => {
-    setMatchState((prev) => ({
-      ...prev,
-      settings: { ...prev.settings, ...newSettings },
-      timer: {
-        ...prev.timer,
-        initialSeconds: newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : prev.timer.initialSeconds,
-        restSeconds: newSettings.restSeconds !== undefined ? newSettings.restSeconds : prev.timer.restSeconds,
-        kyeshiDuration: newSettings.kyeshiDuration !== undefined ? newSettings.kyeshiDuration : prev.timer.kyeshiDuration,
-        // Mevcut kalan süreyi de yeni başlangıç süresine eşitle (anında yansısın)
-        seconds: newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : prev.timer.seconds,
-      },
-    }));
+    setMatchState((prev) => {
+      const t = prev.timer;
+      const now = Date.now();
+      const nextSeconds =
+        newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : prev.timer.seconds;
+      if (t.isRunning && newSettings.initialSeconds !== undefined) {
+        timerStartRef.current = now;
+        secondsAtStartRef.current = nextSeconds;
+      }
+      return {
+        ...prev,
+        settings: { ...prev.settings, ...newSettings },
+        timer: {
+          ...t,
+          initialSeconds: newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : t.initialSeconds,
+          restSeconds: newSettings.restSeconds !== undefined ? newSettings.restSeconds : t.restSeconds,
+          kyeshiDuration: newSettings.kyeshiDuration !== undefined ? newSettings.kyeshiDuration : t.kyeshiDuration,
+          // Mevcut kalan süreyi de yeni başlangıç süresine eşitle (anında yansısın)
+          seconds: nextSeconds,
+        },
+      };
+    });
   }, []);
 
   // Process incoming judge action (Consensus matching)
@@ -651,6 +723,7 @@ export function MatchProvider({ children, realtime }) {
         toggleTimer,
         resetTimer,
         setTimerSeconds,
+        getRemainingSeconds,
         toggleKyeshi,
         addPoint,
         subtractPoint,

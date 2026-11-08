@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   X,
   Smartphone,
-  ShieldAlert,
   Copy,
   Check,
   ExternalLink,
@@ -27,6 +26,25 @@ export default function ConnectionModal({
   const [copied, setCopied] = useState(false);
   const [customIp, setCustomIp] = useState('');
   const [isEditingIp, setIsEditingIp] = useState(false);
+  const [lanIp, setLanIp] = useState('');
+  const [lanPort, setLanPort] = useState(5173);
+
+  // Fetch real LAN IP from server so phones on same Wi-Fi can scan QR and connect
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/network-info')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.localIp) {
+          setLanIp(data.localIp);
+          if (data.port) setLanPort(Number(data.port));
+        }
+      })
+      .catch(() => {
+        // Ignore - fallback to currentOrigin below
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -37,6 +55,8 @@ export default function ConnectionModal({
   // If local, prefer the detected LAN IP address (e.g. 192.168.1.6)
   const hostToUse = customIp
     ? `http://${customIp}`
+    : isLocalhost && lanIp
+    ? `http://${lanIp}:${lanPort}`
     : isLocalhost && serverIp && serverIp !== '127.0.0.1'
     ? `http://${serverIp}:${serverPort}`
     : currentOrigin;
@@ -112,7 +132,7 @@ export default function ConnectionModal({
             <span>
               Ağ Bağlantısı:{' '}
               <strong>
-                {customIp || (serverIp && serverIp !== '127.0.0.1' ? `${serverIp}:${serverPort}` : window.location.host)}
+                {customIp || (isLocalhost && lanIp ? `${lanIp}:${lanPort}` : (serverIp && serverIp !== '127.0.0.1' ? `${serverIp}:${serverPort}` : window.location.host))}
               </strong>
             </span>
           </div>

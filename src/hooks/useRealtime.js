@@ -56,8 +56,13 @@ export function useRealtime({ roomId = 'TKD-1', role = 'scoreboard', slot = null
       // BroadcastChannel not supported in some older environments
     }
 
-    // 2. Setup Socket.io connection
-    const socket = io({
+    // 2. Setup Socket.io connection (use detected LAN IP so phones on same Wi-Fi can connect)
+    const socketUrl = serverIp
+      ? `http://${serverIp}:${serverPort}`
+      : typeof window !== 'undefined'
+        ? window.location.origin
+        : undefined;
+    const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
@@ -109,7 +114,7 @@ export function useRealtime({ roomId = 'TKD-1', role = 'scoreboard', slot = null
         broadcastRef.current = null;
       }
     };
-  }, [roomId, role, slot, name]);
+  }, [roomId, role, slot, name, serverIp, serverPort]);
 
   // Methods to register listeners
   const onStateUpdate = useCallback((cb) => {

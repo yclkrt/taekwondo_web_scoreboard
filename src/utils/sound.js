@@ -5,7 +5,7 @@ class SoundSynthesizer {
   constructor() {
     this.ctx = null;
     this.enabled = true;
-    this.volume = 0.8;
+    this.volume = 0.1;
   }
 
   init() {

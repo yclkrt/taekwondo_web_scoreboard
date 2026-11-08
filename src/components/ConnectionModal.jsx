@@ -52,13 +52,19 @@ export default function ConnectionModal({
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
+  // Yerel erişimde (localhost/127.0.0.1) QR kodun telefonlardan erişebilmesi için
+  // MUTLAKA gerçek LAN IP'i kullanmak zorundayız. 'localhost' fallback olarak asla kullanılmaz.
+  const resolvedServerIp = serverIp && serverIp !== 'localhost' && serverIp !== '127.0.0.1' ? serverIp : null;
+  const displayIp = customIp || lanIp || resolvedServerIp;
+  const displayPort = customIp ? (lanPort || serverPort) : (lanPort || serverPort || 5173);
+
   // If local, prefer the detected LAN IP address (e.g. 192.168.1.6)
   const hostToUse = customIp
     ? `http://${customIp}`
-    : isLocalhost && lanIp
-    ? `http://${lanIp}:${lanPort}`
-    : isLocalhost && serverIp && serverIp !== '127.0.0.1'
-    ? `http://${serverIp}:${serverPort}`
+    : isLocalhost && displayIp
+    ? `http://${displayIp}:${displayPort}`
+    : isLocalhost && resolvedServerIp
+    ? `http://${resolvedServerIp}:${serverPort}`
     : currentOrigin;
 
   // Generate URLs for different roles
@@ -132,8 +138,9 @@ export default function ConnectionModal({
             <span>
               Ağ Bağlantısı:{' '}
               <strong>
-                {customIp || (isLocalhost && lanIp ? `${lanIp}:${lanPort}` : (serverIp && serverIp !== '127.0.0.1' ? `${serverIp}:${serverPort}` : window.location.host))}
+                {displayIp ? `${displayIp}:${displayPort}` : window.location.host}
               </strong>
+              {!displayIp && isLocalhost ? ' (LAN IP tespit edilemedi — aşağıya el ile girin)' : null}
             </span>
           </div>
           <button className="btn-text" onClick={() => setIsEditingIp(!isEditingIp)}>

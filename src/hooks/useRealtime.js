@@ -6,8 +6,14 @@ export function useRealtime({ roomId = 'TKD-1', role = 'scoreboard', slot = null
   const broadcastRef = useRef(null);
   const [isConnected, setIsConnected] = useState(false);
   const [activeJudges, setActiveJudges] = useState([]);
-  const [serverIp, setServerIp] = useState('');
-  const [serverPort, setServerPort] = useState(5173);
+
+  // Başlangıç değerini doğrudan mevcut window.location'dan alıyoruz (Gecikmesiz!)
+  const [serverIp, setServerIp] = useState(() =>
+    typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1'
+  );
+  const [serverPort, setServerPort] = useState(() =>
+    typeof window !== 'undefined' ? window.location.port || '5173' : '5173'
+  );
 
   // Event callbacks registered by consumers
   const listenersRef = useRef({
@@ -16,7 +22,7 @@ export function useRealtime({ roomId = 'TKD-1', role = 'scoreboard', slot = null
     onRemoteCommand: null,
   });
 
-  // Fetch local network info from API
+  // Opsiyonel: Sunucudan arka planda net IP bilgisini doğrula
   useEffect(() => {
     fetch('/api/network-info')
       .then((res) => (res.ok ? res.json() : null))
@@ -24,14 +30,10 @@ export function useRealtime({ roomId = 'TKD-1', role = 'scoreboard', slot = null
         if (data && data.localIp) {
           setServerIp(data.localIp);
           if (data.port) setServerPort(data.port);
-        } else {
-          setServerIp(window.location.hostname || '127.0.0.1');
-          setServerPort(window.location.port || 5173);
         }
       })
       .catch(() => {
-        setServerIp(window.location.hostname || '127.0.0.1');
-        setServerPort(window.location.port || 5173);
+        // Hata olursa mevcut window.location ile devam eder
       });
   }, []);
 
@@ -56,15 +58,15 @@ export function useRealtime({ roomId = 'TKD-1', role = 'scoreboard', slot = null
       // BroadcastChannel not supported in some older environments
     }
 
-    // 2. Setup Socket.io connection (use detected LAN IP so phones on same Wi-Fi can connect)
-    const socketUrl = serverIp
-      ? `http://${serverIp}:${serverPort}`
-      : typeof window !== 'undefined'
-        ? window.location.origin
-        : undefined;
+    // 2. Setup Socket.io connection 
+    // Doğrudan o an tarayıcının bulunduğu Host ve Port üzerinden bağlanır (Telefonlar için kritik)
+    const currentHost = typeof window !== 'undefined' ? window.location.hostname : serverIp;
+    const currentPort = typeof window !== 'undefined' ? window.location.port || serverPort : serverPort;
+    const socketUrl = `http://${currentHost}:${currentPort}`;
+
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 20,
       reconnectionDelay: 1000,
     });
     socketRef.current = socket;
@@ -206,4 +208,3 @@ export function useRealtime({ roomId = 'TKD-1', role = 'scoreboard', slot = null
     sendRemoteCommand,
   };
 }
-

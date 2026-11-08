@@ -17,6 +17,7 @@ import {
   Activity,
   Plus,
   Minus,
+  Wifi,
 } from 'lucide-react';
 import ConnectionModal from './ConnectionModal';
 import SettingsModal from './SettingsModal';
@@ -215,6 +216,14 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
             <span className={`judge-led ${activeJudgesCount > 0 ? 'online' : 'offline'}`} />
             <span>{activeJudgesCount} Hakem Bağlı</span>
           </button>
+
+          {/* LAN IP chip – shows the address judges/phones must use on the same Wi-Fi */}
+          {realtime.serverIp && realtime.serverIp !== 'localhost' && realtime.serverIp !== '127.0.0.1' && (
+            <span className="topbar-lan-chip">
+              <Wifi size={14} />
+              <span>{realtime.serverIp}:{realtime.serverPort}</span>
+            </span>
+          )}
 
           {/* QR Code Modal Button */}
           <button

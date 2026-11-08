@@ -1,25 +1,32 @@
 import { Server } from 'socket.io';
 import os from 'os';
 
-// Helper to determine the best local IPv4 address
+// Helper to determine the best local IPv4 address reachable from other LAN devices
 export function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
-  const candidates = [];
+  const preferred = [];
+  const fallback = [];
 
   for (const name of Object.keys(interfaces)) {
     for (const net of interfaces[name]) {
-      // Must be IPv4 and not loopback (127.0.0.1)
-      if (net.family === 'IPv4' && !net.internal) {
-        // Prefer Wi-Fi or Ethernet (en0, eth0, wlan0, etc.)
+      // Must be IPv4, not loopback, and not link-local (169.254.x.x)
+      if (
+        net.family === 'IPv4' &&
+        !net.internal &&
+        !net.address.startsWith('169.254.')
+      ) {
+        const entry = { name, address: net.address };
+        // Prefer Wi-Fi / Ethernet interfaces
         if (/^(en|eth|wlan|Wi-Fi|Ethernet)/i.test(name)) {
-          return net.address;
+          preferred.push(entry);
+        } else {
+          fallback.push(entry);
         }
-        candidates.push(net.address);
       }
     }
   }
 
-  return candidates[0] || '127.0.0.1';
+  return (preferred[0] || fallback[0] || { address: '127.0.0.1' }).address;
 }
 
 // In-memory room management

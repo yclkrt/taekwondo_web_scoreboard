@@ -260,19 +260,30 @@ export function MatchProvider({ children, realtime }) {
     setMatchState((prev) => {
       const t = prev.timer;
       const now = Date.now();
+      let nextTimer = { ...t, isRunning: false };
       if (t.isRunning) {
         // Durdurulurken kesikli saniye degeri yerine kesirli kalan suresi kaydet
         const elapsed = (now - timerStartRef.current) / 1000;
-        secondsAtStartRef.current = Math.max(0, secondsAtStartRef.current - elapsed);
+        const remaining = Math.max(0, secondsAtStartRef.current - elapsed);
+        secondsAtStartRef.current = remaining;
         timerStartRef.current = now;
+        nextTimer.seconds = remaining;
         if (t.isKyeshi) {
           const ke = (now - kyeshiStartRef.current) / 1000;
-          kyeshiBlueAtStartRef.current = Math.max(0, kyeshiBlueAtStartRef.current - ke);
-          kyeshiRedAtStartRef.current = Math.max(0, kyeshiRedAtStartRef.current - ke);
           kyeshiStartRef.current = now;
+          if (t.kyeshiBlue) {
+            const kRem = Math.max(0, kyeshiBlueAtStartRef.current - ke);
+            kyeshiBlueAtStartRef.current = kRem;
+            nextTimer.kyeshiSecondsBlue = kRem;
+          }
+          if (t.kyeshiRed) {
+            const kRem = Math.max(0, kyeshiRedAtStartRef.current - ke);
+            kyeshiRedAtStartRef.current = kRem;
+            nextTimer.kyeshiSecondsRed = kRem;
+          }
         }
       }
-      return { ...prev, timer: { ...t, isRunning: false } };
+      return { ...prev, timer: nextTimer };
     });
   }, []);
 

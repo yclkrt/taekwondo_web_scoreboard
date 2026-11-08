@@ -41,6 +41,11 @@ const DEFAULT_STATE = {
     isRunning: false,
     isRest: false,
     isKyeshi: false,
+    kyeshiBlue: false,
+    kyeshiRed: false,
+    kyeshiSecondsBlue: 60,
+    kyeshiSecondsRed: 60,
+    kyeshiDuration: 60,
     kyeshiFighter: null,
   },
   round: {
@@ -123,10 +128,42 @@ export function MatchProvider({ children, realtime }) {
       setMatchState((prev) => {
         if (!prev.timer.isRunning) return prev;
 
-        const nextSeconds = prev.timer.seconds - 1;
+        const { timer } = prev;
+
+        // --- KYESHI SAYACLARI (Medical timeout) ---
+        // Herhangi bir köşe kyeshi'de ise normal maç süresi durur, sadece kyeshi süresi akar
+        if (timer.isKyeshi && (timer.kyeshiBlue || timer.kyeshiRed)) {
+          let next = { ...timer };
+
+          if (timer.kyeshiBlue && timer.kyeshiSecondsBlue > 0) {
+            next.kyeshiSecondsBlue = timer.kyeshiSecondsBlue - 1;
+            if (next.kyeshiSecondsBlue === 0) {
+              next.kyeshiBlue = false;
+              next.kyeshiSecondsBlue = next.kyeshiDuration;
+            }
+          }
+          if (timer.kyeshiRed && timer.kyeshiSecondsRed > 0) {
+            next.kyeshiSecondsRed = timer.kyeshiSecondsRed - 1;
+            if (next.kyeshiSecondsRed === 0) {
+              next.kyeshiRed = false;
+              next.kyeshiSecondsRed = next.kyeshiDuration;
+            }
+          }
+
+          // İki kyeshi de bittiyse kyeshi modunu kapat
+          if (!next.kyeshiBlue && !next.kyeshiRed) {
+            next.isKyeshi = false;
+            next.kyeshiFighter = null;
+          }
+
+          return { ...prev, timer: next };
+        }
+
+        // --- NORMAL MAÇ SÜRESİ ---
+        const nextSeconds = timer.seconds - 1;
 
         // 10 second countdown sound
-        if (nextSeconds <= 10 && nextSeconds > 0 && !prev.timer.isRest) {
+        if (nextSeconds <= 10 && nextSeconds > 0 && !timer.isRest) {
           soundManager.playTick();
         }
 
@@ -135,12 +172,12 @@ export function MatchProvider({ children, realtime }) {
           soundManager.playBuzzer();
 
           // If rest period ended, start next round
-          if (prev.timer.isRest) {
+          if (timer.isRest) {
             return {
               ...prev,
               timer: {
-                ...prev.timer,
-                seconds: prev.timer.initialSeconds,
+                ...timer,
+                seconds: timer.initialSeconds,
                 isRunning: false,
                 isRest: false,
               },
@@ -151,7 +188,7 @@ export function MatchProvider({ children, realtime }) {
           return {
             ...prev,
             timer: {
-              ...prev.timer,
+              ...timer,
               seconds: 0,
               isRunning: false,
             },
@@ -161,7 +198,7 @@ export function MatchProvider({ children, realtime }) {
         return {
           ...prev,
           timer: {
-            ...prev.timer,
+            ...timer,
             seconds: nextSeconds,
           },
         };
@@ -223,27 +260,34 @@ export function MatchProvider({ children, realtime }) {
     }));
   }, []);
 
-  // Medical / Kyeshi timeout (1 minute)
+  // Medical / Kyeshi timeout (her köşe için bağımsız)
   const toggleKyeshi = useCallback((fighter = 'blue') => {
     setMatchState((prev) => {
-      const isAlready = prev.timer.isKyeshi && prev.timer.kyeshiFighter === fighter;
-      if (isAlready) {
+      const isBlue = fighter === 'blue';
+      const isAlreadyActive = isBlue ? prev.timer.kyeshiBlue : prev.timer.kyeshiRed;
+
+      // Aynı köşe için zaten kyeshi aktifse → kapat
+      if (isAlreadyActive) {
         return {
           ...prev,
           timer: {
             ...prev.timer,
-            isKyeshi: false,
-            kyeshiFighter: null,
+            [isBlue ? 'kyeshiBlue' : 'kyeshiRed']: false,
+            [isBlue ? 'kyeshiSecondsBlue' : 'kyeshiSecondsRed']: prev.timer.kyeshiDuration,
+            isKyeshi: prev.timer.kyeshiBlue || prev.timer.kyeshiRed ? false : prev.timer.isKyeshi,
+            kyeshiFighter: (!prev.timer.kyeshiBlue && !prev.timer.kyeshiRed) ? null : prev.timer.kyeshiFighter,
           },
         };
       }
+
+      // Kyeshi aç: normal maç süresini durdur, kyeshi süresine geç
       return {
         ...prev,
         timer: {
           ...prev.timer,
-          seconds: 60, // 1 min injury time
-          isRunning: true,
           isKyeshi: true,
+          [isBlue ? 'kyeshiBlue' : 'kyeshiRed']: true,
+          [isBlue ? 'kyeshiSecondsBlue' : 'kyeshiSecondsRed']: prev.timer.kyeshiDuration,
           kyeshiFighter: fighter,
         },
       };
@@ -475,6 +519,7 @@ export function MatchProvider({ children, realtime }) {
         ...prev.timer,
         initialSeconds: newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : prev.timer.initialSeconds,
         restSeconds: newSettings.restSeconds !== undefined ? newSettings.restSeconds : prev.timer.restSeconds,
+        kyeshiDuration: newSettings.kyeshiDuration !== undefined ? newSettings.kyeshiDuration : prev.timer.kyeshiDuration,
         // Mevcut kalan süreyi de yeni başlangıç süresine eşitle (anında yansısın)
         seconds: newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : prev.timer.seconds,
       },

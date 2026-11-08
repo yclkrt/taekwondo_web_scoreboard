@@ -253,7 +253,11 @@ export default function MobileController({
         </button>
 
         <button className="btn-nav btn-kyeshi" onClick={() => sendCommand('kyeshi', { target: 'blue' })}>
-          <Activity size={18} /> Doktor (Kyeshi)
+          <Activity size={18} /> Doktor (Kyeshi Mavi)
+        </button>
+
+        <button className="btn-nav btn-kyeshi" onClick={() => sendCommand('kyeshi', { target: 'red' })}>
+          <Activity size={18} /> Doktor (Kyeshi Kırmızı)
         </button>
 
         <button className="btn-nav btn-next-round" onClick={() => sendCommand('next_round')}>

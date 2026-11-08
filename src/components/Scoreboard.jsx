@@ -125,8 +125,19 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
   const timerSeconds = matchState.timer.seconds;
   const isTimerRunning = matchState.timer.isRunning;
   const isKyeshi = matchState.timer.isKyeshi;
+  const kyeshiBlue = matchState.timer.kyeshiBlue;
+  const kyeshiRed = matchState.timer.kyeshiRed;
+  const kyeshiSecondsBlue = matchState.timer.kyeshiSecondsBlue;
+  const kyeshiSecondsRed = matchState.timer.kyeshiSecondsRed;
   const isRest = matchState.timer.isRest;
   const winner = matchState.round.winner;
+
+  // Kyeshi aktifse kyeshi süresini, yoksa normal süreyi göster
+  const displaySeconds = isKyeshi && kyeshiBlue
+    ? kyeshiSecondsBlue
+    : isKyeshi && kyeshiRed
+      ? kyeshiSecondsRed
+      : timerSeconds;
 
   // Timer digit styling
   const timerClass = useMemo(() => {
@@ -359,15 +370,25 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
 
           {/* Kyeshi Medical Badge */}
           {isKyeshi && (
-            <div className="kyeshi-alert-badge">
-              <Activity size={18} className="animate-spin" />
-              <span>DOKTOR / KYESHI ({matchState.timer.kyeshiFighter === 'blue' ? 'MAVİ' : 'KIRMIZI'})</span>
-            </div>
+            <>
+              {kyeshiBlue && (
+                <div className="kyeshi-alert-badge kyeshi-blue">
+                  <Activity size={18} className="animate-spin" />
+                  <span>DOKTOR / KYESHI - MAVİ ({formatTimer(kyeshiSecondsBlue)})</span>
+                </div>
+              )}
+              {kyeshiRed && (
+                <div className="kyeshi-alert-badge kyeshi-red">
+                  <Activity size={18} className="animate-spin" />
+                  <span>DOKTOR / KYESHI - KIRMIZI ({formatTimer(kyeshiSecondsRed)})</span>
+                </div>
+              )}
+            </>
           )}
 
           {/* Massive Digital LED Timer */}
           <div className={`arena-timer-display ${timerClass}`}>
-            <span className="timer-text">{formatTimer(timerSeconds)}</span>
+            <span className="timer-text">{formatTimer(displaySeconds)}</span>
           </div>
 
           {/* Primary Arena Control Buttons */}
@@ -390,12 +411,21 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
             </button>
 
             <button
-              className="btn-arena-sub"
+              className={`btn-arena-sub ${kyeshiBlue ? 'btn-kyeshi-active' : ''}`}
               onClick={() => toggleKyeshi('blue')}
-              title="Doktor / Kyeshi (1 Dakika)"
+              title="Doktor / Kyeshi (Mavi Köşe)"
             >
               <Activity size={18} />
-              <span>Kyeshi</span>
+              <span>Kyeshi Mavi</span>
+            </button>
+
+            <button
+              className={`btn-arena-sub ${kyeshiRed ? 'btn-kyeshi-active' : ''}`}
+              onClick={() => toggleKyeshi('red')}
+              title="Doktor / Kyeshi (Kırmızı Köşe)"
+            >
+              <Activity size={18} />
+              <span>Kyeshi Kırmızı</span>
             </button>
           </div>
 

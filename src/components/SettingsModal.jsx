@@ -75,6 +75,7 @@ export default function SettingsModal({
   });
   const [initialSeconds, setInitialSeconds] = useState(matchState?.timer?.initialSeconds || 120);
   const [restSeconds, setRestSeconds] = useState(matchState?.timer?.restSeconds || 60);
+  const [kyeshiDuration, setKyeshiDuration] = useState(matchState?.timer?.kyeshiDuration || 60);
   const [systemMode, setSystemMode] = useState(matchState?.settings?.systemMode || 'best_of_3');
   const [consensusRequired, setConsensusRequired] = useState(matchState?.settings?.consensusRequired || 2);
   const [consensusWindowMs, setConsensusWindowMs] = useState(matchState?.settings?.consensusWindowMs || 1200);
@@ -98,6 +99,7 @@ export default function SettingsModal({
       soundEnabled,
       initialSeconds: Number(initialSeconds),
       restSeconds: Number(restSeconds),
+      kyeshiDuration: Number(kyeshiDuration),
     });
     onClose();
   };
@@ -299,6 +301,18 @@ export default function SettingsModal({
                 >
                   <option value={30}>30 Saniye</option>
                   <option value={60}>1 Dakika (Resmi)</option>
+                </select>
+              </div>
+
+              <div className="form-field">
+                <label>Kyeshi / Doktor Süresi (Saniye)</label>
+                <select
+                  value={kyeshiDuration}
+                  onChange={(e) => setKyeshiDuration(Number(e.target.value))}
+                >
+                  <option value={45}>0:45</option>
+                  <option value={60}>1:00 (Resmi WT Standardı)</option>
+                  <option value={90}>1:30</option>
                 </select>
               </div>
 

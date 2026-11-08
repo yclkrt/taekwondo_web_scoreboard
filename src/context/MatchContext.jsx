@@ -473,8 +473,10 @@ export function MatchProvider({ children, realtime }) {
       settings: { ...prev.settings, ...newSettings },
       timer: {
         ...prev.timer,
-        initialSeconds: newSettings.initialSeconds || prev.timer.initialSeconds,
-        restSeconds: newSettings.restSeconds || prev.timer.restSeconds,
+        initialSeconds: newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : prev.timer.initialSeconds,
+        restSeconds: newSettings.restSeconds !== undefined ? newSettings.restSeconds : prev.timer.restSeconds,
+        // Mevcut kalan süreyi de yeni başlangıç süresine eşitle (anında yansısın)
+        seconds: newSettings.initialSeconds !== undefined ? newSettings.initialSeconds : prev.timer.seconds,
       },
     }));
   }, []);

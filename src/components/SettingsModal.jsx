@@ -2,6 +2,57 @@ import { useState } from 'react';
 import { X, Settings, Volume2, Save, RotateCcw } from 'lucide-react';
 import { soundManager } from '../utils/sound';
 
+const FLAGS = [
+  { label: '🇹🇷 Türkiye', value: '🇹🇷' },
+  { label: '🇰🇷 Kore', value: '🇰🇷' },
+  { label: '🇨🇳 Çin', value: '🇨🇳' },
+  { label: '🇯🇵 Japonya', value: '🇯🇵' },
+  { label: '🇮🇷 İran', value: '🇮🇷' },
+  { label: '🇺🇸 Amerika', value: '🇺🇸' },
+  { label: '🇬🇧 Birleşik Krallık', value: '🇬🇧' },
+  { label: '🇫🇷 Fransa', value: '🇫🇷' },
+  { label: '🇩🇪 Almanya', value: '🇩🇪' },
+  { label: '🇮🇹 İtalya', value: '🇮🇹' },
+  { label: '🇪🇸 İspanya', value: '🇪🇸' },
+  { label: '🇧🇷 Brezilya', value: '🇧🇷' },
+  { label: '🇲🇽 Meksika', value: '🇲🇽' },
+  { label: '🇪🇬 Mısır', value: '🇪🇬' },
+  { label: '🇹🇳 Tunus', value: '🇹🇳' },
+  { label: '🇲🇦 Fas', value: '🇲🇦' },
+  { label: '🇨🇮 Filiz Sülun', value: '🇨🇮' },
+  { label: '🇳🇬 Nijerya', value: '🇳🇬' },
+  { label: '🇷🇺 Rusya', value: '🇷🇺' },
+  { label: '🇺🇦 Ukrayna', value: '🇺🇦' },
+  { label: '🇵🇱 Polonya', value: '🇵🇱' },
+  { label: '🇳🇱 Hollanda', value: '🇳🇱' },
+  { label: '🇧🇪 Belçika', value: '🇧🇪' },
+  { label: '🇨🇭 İsviçre', value: '🇨🇭' },
+  { label: '🇦🇹 Avusturya', value: '🇦🇹' },
+  { label: '🇸🇪 İsveç', value: '🇸🇪' },
+  { label: '🇳🇴 Norveç', value: '🇳🇴' },
+  { label: '🇩🇰 Danimarka', value: '🇩🇰' },
+  { label: '🇫🇮 Finlandiya', value: '🇫🇮' },
+  { label: '🇨🇦 Kanada', value: '🇨🇦' },
+  { label: '🇦🇺 Avustralya', value: '🇦🇺' },
+  { label: '🇳🇿 Yeni Zelanda', value: '🇳🇿' },
+  { label: '🇹🇭 Tayland', value: '🇹🇭' },
+  { label: '🇻🇳 Vietnam', value: '🇻🇳' },
+  { label: '🇹🇼 Çin Taipei', value: '🇹🇼' },
+  { label: '🇭🇰 Hong Kong', value: '🇭🇰' },
+  { label: '🇮🇳 Hindistan', value: '🇮🇳' },
+  { label: '🇵🇭 Filipinler', value: '🇵🇭' },
+  { label: '🇮🇩 Endonezya', value: '🇮🇩' },
+  { label: '🇲🇾 Malezya', value: '🇲🇾' },
+  { label: '🇸🇬 Singapur', value: '🇸🇬' },
+  { label: '🇯🇴 Ürdün', value: '🇯🇴' },
+  { label: '🇱🇧 Lübnan', value: '🇱🇧' },
+  { label: '🇸🇦 Suudi Arabistan', value: '🇸🇦' },
+  { label: '🇶🇦 Katar', value: '🇶🇦' },
+  { label: '🇦🇪 BAE', value: '🇦🇪' },
+  { label: '🇰🇼 Kuveyt', value: '🇰🇼' },
+  { label: '✏️ Özel emoji gir', value: '__CUSTOM__' },
+];
+
 export default function SettingsModal({
   isOpen,
   onClose,
@@ -28,13 +79,18 @@ export default function SettingsModal({
   const [consensusRequired, setConsensusRequired] = useState(matchState?.settings?.consensusRequired || 2);
   const [consensusWindowMs, setConsensusWindowMs] = useState(matchState?.settings?.consensusWindowMs || 1200);
   const [soundEnabled, setSoundEnabled] = useState(matchState?.settings?.soundEnabled ?? true);
+  const [blueCustomFlag, setBlueCustomFlag] = useState('');
+  const [redCustomFlag, setRedCustomFlag] = useState('');
 
   if (!isOpen) return null;
 
   const handleSave = (e) => {
     e.preventDefault();
     onUpdateMatchInfo(matchInfo);
-    onUpdateFighters(blue, red);
+    onUpdateFighters(
+      { ...blue, flag: blue.flag === '__CUSTOM__' ? blueCustomFlag : blue.flag },
+      { ...red, flag: red.flag === '__CUSTOM__' ? redCustomFlag : red.flag }
+    );
     onUpdateSettings({
       systemMode,
       consensusRequired: Number(consensusRequired),
@@ -119,12 +175,40 @@ export default function SettingsModal({
                     />
                   </div>
                   <div className="form-field">
-                    <label>Bayrak (Emoji)</label>
-                    <input
-                      type="text"
-                      value={blue.flag}
-                      onChange={(e) => setBlue({ ...blue, flag: e.target.value })}
-                    />
+                    <label>Bayrak</label>
+                    <select
+                      value={blue.flag === '__CUSTOM__' ? '__CUSTOM__' : blue.flag}
+                      onChange={(e) => {
+                        if (e.target.value === '__CUSTOM__') {
+                          setBlue({ ...blue, flag: '__CUSTOM__' });
+                        } else {
+                          setBlueCustomFlag('');
+                          setBlue({ ...blue, flag: e.target.value });
+                        }
+                      }}
+                    >
+                      {FLAGS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                    {(blue.flag === '__CUSTOM__' || blueCustomFlag) && (
+                      <div className="form-field">
+                        <label>Özel Emoji</label>
+                        <input
+                          type="text"
+                          maxLength="2"
+                          value={blueCustomFlag}
+                          onChange={(e) => {
+                        const val = e.target.value;
+                        setBlueCustomFlag(val);
+                        setBlue({ ...blue, flag: '__CUSTOM__' });
+                      }}
+                          placeholder="🇹🇷"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -150,12 +234,40 @@ export default function SettingsModal({
                     />
                   </div>
                   <div className="form-field">
-                    <label>Bayrak (Emoji)</label>
-                    <input
-                      type="text"
-                      value={red.flag}
-                      onChange={(e) => setRed({ ...red, flag: e.target.value })}
-                    />
+                    <label>Bayrak</label>
+                    <select
+                      value={red.flag === '__CUSTOM__' ? '__CUSTOM__' : red.flag}
+                      onChange={(e) => {
+                        if (e.target.value === '__CUSTOM__') {
+                          setRed({ ...red, flag: '__CUSTOM__' });
+                        } else {
+                          setRedCustomFlag('');
+                          setRed({ ...red, flag: e.target.value });
+                        }
+                      }}
+                    >
+                      {FLAGS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                    {(red.flag === '__CUSTOM__' || redCustomFlag) && (
+                      <div className="form-field">
+                        <label>Özel Emoji</label>
+                        <input
+                          type="text"
+                          maxLength="2"
+                          value={redCustomFlag}
+                          onChange={(e) => {
+                        const val = e.target.value;
+                        setRedCustomFlag(val);
+                        setRed({ ...red, flag: '__CUSTOM__' });
+                      }}
+                          placeholder="🇰🇷"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

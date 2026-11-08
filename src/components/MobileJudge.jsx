@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { soundManager } from '../utils/sound';
 import { Shield, Zap, Maximize, CheckCircle, Wifi, RefreshCw } from 'lucide-react';
 
@@ -89,15 +89,61 @@ export default function MobileJudge({
     }
   };
 
-  const formatTimer = (seconds = 0) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+  // Saniyeyi MM:SS veya (1 dakikanin altinda) SS.cc olarak bicimler.
+  const formatTimer = useCallback((totalSeconds = 0, showCentiseconds = false) => {
+    const total = Math.max(0, totalSeconds);
+    if (showCentiseconds && total < 60) {
+      const secs = Math.floor(total);
+      const centis = Math.floor((total % 1) * 100);
+      return `${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+    }
+    const mins = Math.floor(total / 60);
+    const secs = Math.floor(total % 60);
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  }, []);
 
   const isTimerRunning = matchState?.timer?.isRunning || false;
-  const timerSeconds = matchState?.timer?.seconds ?? 120;
   const currentRound = matchState?.round?.current || 1;
+
+  // Akici timer gorunumu: requestAnimationFrame ile centisaniyelik seri akis.
+  const [displaySeconds, setDisplaySeconds] = useState(matchState?.timer?.seconds ?? 120);
+  const lastRenderedTimerText = useRef('');
+  const stateReceivedRef = useRef(null);
+  const secondsAtStateRef = useRef(0);
+
+  useEffect(() => {
+    const timer = matchState?.timer;
+    if (timer) {
+      stateReceivedRef.current = Date.now();
+      secondsAtStateRef.current = timer.seconds;
+    }
+  }, [matchState]);
+
+  useEffect(() => {
+    let rafId;
+    const loop = () => {
+      const timer = matchState?.timer;
+      if (!timer) return;
+
+      let remaining;
+      if (!timer.isRunning) {
+        remaining = timer.seconds;
+      } else {
+        const elapsed = (Date.now() - stateReceivedRef.current) / 1000;
+        remaining = Math.max(0, secondsAtStateRef.current - elapsed);
+      }
+
+      const showCentiseconds = remaining < 60;
+      const text = formatTimer(remaining, showCentiseconds);
+      if (text !== lastRenderedTimerText.current) {
+        lastRenderedTimerText.current = text;
+        setDisplaySeconds(remaining);
+      }
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, [matchState, formatTimer]);
 
   return (
     <div className="mobile-judge-container">
@@ -128,7 +174,7 @@ export default function MobileJudge({
         <div className={`judge-match-status ${isTimerRunning ? 'status-active' : 'status-paused'}`}>
           <span className="status-dot-blink" />
           <span className="round-label">R{currentRound}</span>
-          <span className="time-digits">{formatTimer(timerSeconds)}</span>
+          <span className="time-digits">{formatTimer(displaySeconds, displaySeconds < 60)}</span>
         </div>
 
         <div className="header-actions">

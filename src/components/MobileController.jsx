@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Play,
   Pause,
@@ -53,11 +53,18 @@ export default function MobileController({
     });
   };
 
-  const formatTimer = (seconds = 0) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+  // Saniyeyi MM:SS veya (1 dakikanin altinda) SS.cc olarak bicimler.
+  const formatTimer = useCallback((totalSeconds = 0, showCentiseconds = false) => {
+    const total = Math.max(0, totalSeconds);
+    if (showCentiseconds && total < 60) {
+      const secs = Math.floor(total);
+      const centis = Math.floor((total % 1) * 100);
+      return `${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+    }
+    const mins = Math.floor(total / 60);
+    const secs = Math.floor(total % 60);
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  }, []);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -68,9 +75,51 @@ export default function MobileController({
   };
 
   const isTimerRunning = matchState?.timer?.isRunning || false;
-  const timerSeconds = matchState?.timer?.seconds ?? 120;
   const currentRound = matchState?.round?.current || 1;
   const isKyeshi = matchState?.timer?.isKyeshi || false;
+
+  // Akici timer gorunumu: requestAnimationFrame ile centisaniyelik seri akis.
+  // Sunucudan saniyelik state_sync alindiginda ara degerleri yerel olarak interpolasyon yapar.
+  const [displaySeconds, setDisplaySeconds] = useState(matchState?.timer?.seconds ?? 120);
+  const lastRenderedTimerText = useRef('');
+  const stateReceivedRef = useRef(null);
+  const secondsAtStateRef = useRef(0);
+
+  // State guncellendi referans noktasini sifirla
+  useEffect(() => {
+    const timer = matchState?.timer;
+    if (timer) {
+      stateReceivedRef.current = Date.now();
+      secondsAtStateRef.current = timer.seconds;
+    }
+  }, [matchState]);
+
+  // RAF dongusu – sadece gorunen metin degistiginde render yapar
+  useEffect(() => {
+    let rafId;
+    const loop = () => {
+      const timer = matchState?.timer;
+      if (!timer) return;
+
+      let remaining;
+      if (!timer.isRunning) {
+        remaining = timer.seconds;
+      } else {
+        const elapsed = (Date.now() - stateReceivedRef.current) / 1000;
+        remaining = Math.max(0, secondsAtStateRef.current - elapsed);
+      }
+
+      const showCentiseconds = remaining < 60;
+      const text = formatTimer(remaining, showCentiseconds);
+      if (text !== lastRenderedTimerText.current) {
+        lastRenderedTimerText.current = text;
+        setDisplaySeconds(remaining);
+      }
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, [matchState, formatTimer]);
 
   return (
     <div className="mobile-controller-container">
@@ -101,7 +150,7 @@ export default function MobileController({
         </div>
 
         <div className={`giant-timer-display ${isTimerRunning ? 'running' : 'paused'}`}>
-          {formatTimer(timerSeconds)}
+          {formatTimer(displaySeconds, displaySeconds < 60)}
         </div>
 
         {/* Master Timer Buttons */}

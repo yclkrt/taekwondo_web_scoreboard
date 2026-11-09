@@ -328,9 +328,18 @@ export function MatchProvider({ children, realtime }) {
             };
           }
 
-          // Round time ended -> increment winner's round count immediately and go to rest
+          // Round time ended -> increment winner's round count and check if match is over
           timerStartRef.current = Date.now();
           secondsAtStartRef.current = timer.restSeconds;
+
+          const isBestOf3 = prev.settings.systemMode === 'best_of_3';
+          let matchWinner = null;
+
+          // Best of 3: bir taraf 2 round kazanırsa maç biter, mola verilmez
+          if (isBestOf3) {
+            if (blueRoundWins >= 2) matchWinner = 'blue';
+            else if (redRoundWins >= 2) matchWinner = 'red';
+          }
 
           return {
             ...prev,
@@ -344,13 +353,14 @@ export function MatchProvider({ children, realtime }) {
             },
             timer: {
               ...timer,
-              seconds: timer.restSeconds,
-              isRunning: true, // mola sayımı otomatik başlar
-              isRest: true,
+              seconds: matchWinner ? 0 : timer.restSeconds, // maç biterse süre 0, devam ediyorsa mola
+              isRunning: matchWinner ? false : true, // maç biterse timer durur
+              isRest: matchWinner ? false : true, // maç biterse mola yok
             },
             round: {
               ...prev.round,
               roundWinner: roundWinner,
+              winner: matchWinner,
             },
           };
         }

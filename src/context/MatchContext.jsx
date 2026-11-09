@@ -78,10 +78,28 @@ function mergeWithDefaults(saved) {
   try {
     return {
       matchInfo: { ...DEFAULT_STATE.matchInfo, ...(saved.matchInfo || {}) },
-      blue: { ...DEFAULT_STATE.blue, ...(saved.blue || {}), history: saved.blue?.history || [] },
-      red: { ...DEFAULT_STATE.red, ...(saved.red || {}), history: saved.red?.history || [] },
+      blue: {
+        ...DEFAULT_STATE.blue,
+        ...(saved.blue || {}),
+        score: 0,
+        gamjeom: 0,
+        roundWins: 0,
+        videoQuota: DEFAULT_STATE.blue.videoQuota,
+        videoRequested: false,
+        history: saved.blue?.history || [],
+      },
+      red: {
+        ...DEFAULT_STATE.red,
+        ...(saved.red || {}),
+        score: 0,
+        gamjeom: 0,
+        roundWins: 0,
+        videoQuota: DEFAULT_STATE.red.videoQuota,
+        videoRequested: false,
+        history: saved.red?.history || [],
+      },
       timer: { ...DEFAULT_STATE.timer, ...(saved.timer || {}), isRunning: false },
-      round: { ...DEFAULT_STATE.round, ...(saved.round || {}) },
+      round: { ...DEFAULT_STATE.round, current: 1, roundWinner: null, winner: null },
       settings: { ...DEFAULT_STATE.settings, ...(saved.settings || {}) },
       logs: saved.logs || [],
     };
@@ -126,6 +144,78 @@ export function MatchProvider({ children, realtime }) {
   useEffect(() => {
     soundManager.setEnabled(matchState.settings.soundEnabled);
   }, [matchState.settings.soundEnabled]);
+
+  // Next round / End round
+  const nextRound = useCallback(() => {
+    soundManager.playBuzzer();
+    timerStartRef.current = Date.now();
+    setMatchState((prev) => {
+      secondsAtStartRef.current = prev.timer.initialSeconds;
+      const isBestOf3 = prev.settings.systemMode === 'best_of_3';
+      let roundWinner = null;
+
+      if (prev.blue.score > prev.red.score) {
+        roundWinner = 'blue';
+      } else if (prev.red.score > prev.blue.score) {
+        roundWinner = 'red';
+      } else {
+        // Tie breaker: less gam-jeom wins
+        if (prev.blue.gamjeom < prev.red.gamjeom) roundWinner = 'blue';
+        else if (prev.red.gamjeom < prev.blue.gamjeom) roundWinner = 'red';
+      }
+
+      const blueRoundWins = roundWinner === 'blue' ? prev.blue.roundWins + 1 : prev.blue.roundWins;
+      const redRoundWins = roundWinner === 'red' ? prev.red.roundWins + 1 : prev.red.roundWins;
+
+      const roundHistoryEntry = {
+        round: prev.round.current,
+        blueScore: prev.blue.score,
+        redScore: prev.red.score,
+        blueGamjeom: prev.blue.gamjeom,
+        redGamjeom: prev.red.gamjeom,
+        winner: roundWinner,
+      };
+
+      // Check overall match winner in Best of 3
+      let matchWinner = null;
+      if (isBestOf3) {
+        if (blueRoundWins >= 2) matchWinner = 'blue';
+        else if (redRoundWins >= 2) matchWinner = 'red';
+      }
+
+      const nextRoundNum = prev.round.current + 1;
+
+      return {
+        ...prev,
+        blue: {
+          ...prev.blue,
+          score: isBestOf3 ? 0 : prev.blue.score, // in Best of 3 score resets each round
+          gamjeom: isBestOf3 ? 0 : prev.blue.gamjeom,
+          roundWins: blueRoundWins,
+          history: [...prev.blue.history, roundHistoryEntry],
+        },
+        red: {
+          ...prev.red,
+          score: isBestOf3 ? 0 : prev.red.score,
+          gamjeom: isBestOf3 ? 0 : prev.red.gamjeom,
+          roundWins: redRoundWins,
+          history: [...prev.red.history, roundHistoryEntry],
+        },
+        timer: {
+          ...prev.timer,
+          seconds: prev.timer.initialSeconds,
+          isRunning: false, // hakem manuel başlatmalı
+          isRest: false,
+        },
+        round: {
+          ...prev.round,
+          current: nextRoundNum,
+          roundWinner: null,
+          winner: matchWinner,
+        },
+      };
+    });
+  }, []);
 
   // Timer interval engine
   useEffect(() => {
@@ -178,26 +268,89 @@ export function MatchProvider({ children, realtime }) {
         if (nextSeconds <= 0) {
           soundManager.playBuzzer();
 
-          // If rest period ended, start next round
+          // Determine round winner (round-wins tracking)
+          let roundWinner = null;
+          if (prev.blue.score > prev.red.score) {
+            roundWinner = 'blue';
+          } else if (prev.red.score > prev.blue.score) {
+            roundWinner = 'red';
+          } else {
+            // Tie breaker: less gam-jeom wins
+            if (prev.blue.gamjeom < prev.red.gamjeom) roundWinner = 'blue';
+            else if (prev.red.gamjeom < prev.blue.gamjeom) roundWinner = 'red';
+          }
+
+          const blueRoundWins = roundWinner === 'blue' ? prev.blue.roundWins + 1 : prev.blue.roundWins;
+          const redRoundWins = roundWinner === 'red' ? prev.red.roundWins + 1 : prev.red.roundWins;
+
+          // If rest period ended -> prepare next round but WAIT for referee to start manually
+          // roundWins zaten round biterken artırılmıştı, burada tekrar artırmamalıyız
           if (timer.isRest) {
+            const isBestOf3 = prev.settings.systemMode === 'best_of_3';
+            let matchWinner = null;
+            if (isBestOf3) {
+              if (prev.blue.roundWins >= 2) matchWinner = 'blue';
+              else if (prev.red.roundWins >= 2) matchWinner = 'red';
+            }
+
+            // Reset scores for next round (Best of 3)
+            const nextBlueScore = isBestOf3 ? 0 : prev.blue.score;
+            const nextRedScore = isBestOf3 ? 0 : prev.red.score;
+            const nextBlueGamjeom = isBestOf3 ? 0 : prev.blue.gamjeom;
+            const nextRedGamjeom = isBestOf3 ? 0 : prev.red.gamjeom;
+
             return {
               ...prev,
+              blue: {
+                ...prev.blue,
+                score: nextBlueScore,
+                gamjeom: nextBlueGamjeom,
+                roundWins: prev.blue.roundWins, // tekrar artırmama
+              },
+              red: {
+                ...prev.red,
+                score: nextRedScore,
+                gamjeom: nextRedGamjeom,
+                roundWins: prev.red.roundWins, // tekrar artırmama
+              },
               timer: {
                 ...timer,
                 seconds: timer.initialSeconds,
-                isRunning: false,
+                isRunning: false, // beklemede - hakem başlatmalı
                 isRest: false,
+              },
+              round: {
+                ...prev.round,
+                current: prev.round.current + 1,
+                roundWinner: null,
+                winner: matchWinner,
               },
             };
           }
 
-          // Round time ended
+          // Round time ended -> increment winner's round count immediately and go to rest
+          timerStartRef.current = Date.now();
+          secondsAtStartRef.current = timer.restSeconds;
+
           return {
             ...prev,
+            blue: {
+              ...prev.blue,
+              roundWins: blueRoundWins,
+            },
+            red: {
+              ...prev.red,
+              roundWins: redRoundWins,
+            },
             timer: {
               ...timer,
-              seconds: 0,
-              isRunning: false,
+              seconds: timer.restSeconds,
+              isRunning: true, // mola sayımı otomatik başlar
+              isRest: true,
+            },
+            round: {
+              ...prev.round,
+              roundWinner: roundWinner,
             },
           };
         }
@@ -469,76 +622,6 @@ export function MatchProvider({ children, realtime }) {
           ...prev[fighter],
           videoQuota: currentQuota > 0 ? 0 : 1,
           videoRequested: currentQuota > 0,
-        },
-      };
-    });
-  }, []);
-
-  // Next round / End round
-  const nextRound = useCallback(() => {
-    soundManager.playBuzzer();
-    setMatchState((prev) => {
-      const isBestOf3 = prev.settings.systemMode === 'best_of_3';
-      let roundWinner = null;
-
-      if (prev.blue.score > prev.red.score) {
-        roundWinner = 'blue';
-      } else if (prev.red.score > prev.blue.score) {
-        roundWinner = 'red';
-      } else {
-        // Tie breaker: less gam-jeom wins
-        if (prev.blue.gamjeom < prev.red.gamjeom) roundWinner = 'blue';
-        else if (prev.red.gamjeom < prev.blue.gamjeom) roundWinner = 'red';
-      }
-
-      const blueRoundWins = roundWinner === 'blue' ? prev.blue.roundWins + 1 : prev.blue.roundWins;
-      const redRoundWins = roundWinner === 'red' ? prev.red.roundWins + 1 : prev.red.roundWins;
-
-      const roundHistoryEntry = {
-        round: prev.round.current,
-        blueScore: prev.blue.score,
-        redScore: prev.red.score,
-        blueGamjeom: prev.blue.gamjeom,
-        redGamjeom: prev.red.gamjeom,
-        winner: roundWinner,
-      };
-
-      // Check overall match winner in Best of 3
-      let matchWinner = null;
-      if (isBestOf3) {
-        if (blueRoundWins >= 2) matchWinner = 'blue';
-        else if (redRoundWins >= 2) matchWinner = 'red';
-      }
-
-      const nextRoundNum = prev.round.current + 1;
-
-      return {
-        ...prev,
-        blue: {
-          ...prev.blue,
-          score: isBestOf3 ? 0 : prev.blue.score, // in Best of 3 score resets each round
-          gamjeom: isBestOf3 ? 0 : prev.blue.gamjeom,
-          roundWins: blueRoundWins,
-          history: [...prev.blue.history, roundHistoryEntry],
-        },
-        red: {
-          ...prev.red,
-          score: isBestOf3 ? 0 : prev.red.score,
-          gamjeom: isBestOf3 ? 0 : prev.red.gamjeom,
-          roundWins: redRoundWins,
-          history: [...prev.red.history, roundHistoryEntry],
-        },
-        timer: {
-          ...prev.timer,
-          seconds: prev.timer.initialSeconds,
-          isRunning: false,
-          isRest: false,
-        },
-        round: {
-          ...prev.round,
-          current: nextRoundNum,
-          roundWinner: null,
-          winner: matchWinner,
         },
       };
     });

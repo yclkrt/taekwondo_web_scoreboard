@@ -6,8 +6,6 @@ import {
   Pause,
   RotateCcw,
   Volume2,
-  ChevronRight,
-  ChevronLeft,
   QrCode,
   Settings,
   Award,
@@ -29,8 +27,6 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
     judgeIndicators,
     toggleTimer,
     resetTimer,
-    nextRound,
-    prevRound,
     resetMatch,
     addPoint,
     subtractPoint,
@@ -166,11 +162,12 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
   // Timer digit styling
   const timerClass = useMemo(() => {
     if (isKyeshi) return 'timer-kyeshi';
+    if (isRest) return 'timer-rest';
     if (displaySeconds <= 0) return 'timer-expired';
     if (displaySeconds <= 10) return 'timer-danger';
     if (displaySeconds <= 30) return 'timer-warning';
     return isTimerRunning ? 'timer-running' : 'timer-idle';
-  }, [displaySeconds, isTimerRunning, isKyeshi]);
+  }, [displaySeconds, isTimerRunning, isKyeshi, isRest]);
 
   const activeJudgesCount = realtime.activeJudges.filter((j) => j.online).length;
 
@@ -418,6 +415,13 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
             </>
           )}
 
+          {/* Rest / Mola indicator */}
+          {isRest && (
+            <div className="rest-badge">
+              <span>MOLA / REST</span>
+            </div>
+          )}
+
           {/* Massive Digital LED Timer */}
           <div className={`arena-timer-display ${timerClass}`}>
             <span className="timer-text">{formatTimer(displaySeconds, displaySeconds < 60)}</span>
@@ -461,25 +465,6 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
             </button>
           </div>
 
-          {/* Round Navigation Bar */}
-          <div className="round-nav-bar">
-            <button
-              className="btn-round-nav"
-              onClick={prevRound}
-              disabled={matchState.round.current <= 1}
-              title="Önceki Raund"
-            >
-              <ChevronLeft size={16} /> Önceki Raund
-            </button>
-
-            <button
-              className="btn-round-nav btn-next-round"
-              onClick={nextRound}
-              title="Sonraki Raund"
-            >
-              Sonraki Raund <ChevronRight size={16} />
-            </button>
-          </div>
         </section>
 
         {/* ---------------- RED (HONG) SIDE ---------------- */}

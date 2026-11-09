@@ -582,6 +582,21 @@
   overflow: hidden;
 }
 
+/* Mola / Rest rozeti */
+.rest-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #ffb703;
+  text-shadow: 0 0 10px rgba(255, 183, 3, 0.4);
+}
+
 /* Giant Arena Timer – büyük ve okunabilir (sporcular mesaftan rahat görebilir) */
 .arena-timer-display {
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;
@@ -625,6 +640,13 @@
   border-color: #ff1e3850;
   box-shadow: 0 0 30px rgba(255, 30, 56, 0.25);
   animation: danger-blink 0.5s ease-in-out infinite;
+}
+
+.timer-rest {
+  color: #ffb703;
+  border-color: #ffb70360;
+  box-shadow: 0 0 24px rgba(255, 183, 3, 0.15);
+  animation: danger-blink 1s ease-in-out infinite;
 }
 
 .timer-expired {

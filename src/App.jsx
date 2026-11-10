@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MatchProvider, useMatch } from './context/MatchContext';
 import { useRealtime } from './hooks/useRealtime';
 import Scoreboard from './components/Scoreboard';
+import ResultScreen from './components/ResultScreen';
 import MobileController from './components/MobileController';
 import MobileJudge from './components/MobileJudge';
 import './App.css';
@@ -48,6 +49,11 @@ function AppContent({ role, slot, roomId, realtime }) {
         matchState={matchState}
       />
     );
+  }
+
+  // Result / winner screen (blue or red toned background)
+  if (role === 'result') {
+    return <ResultScreen />;
   }
 
   // Default: Arena Scoreboard

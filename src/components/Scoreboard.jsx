@@ -137,6 +137,15 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
   const isRest = matchState.timer.isRest;
   const winner = matchState.round.winner;
 
+  // Maç bittiğinde (galip belirlendiğinde) otomatik sonuç ekranına geçiş yap
+  useEffect(() => {
+    if (!winner) return;
+    const sp = new URLSearchParams(window.location.search);
+    sp.set('role', 'result');
+    window.history.pushState({}, '', `${window.location.pathname}?${sp.toString()}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, [winner]);
+
   // Akici timer gorunumu: requestAnimationFrame ile centisaniyelik seri akis.
   // matchState (veya sunucuya senkron durum) her kare guncellenmez, sadece
   // gorunen sure degistiginde yeniden render yapilir.

@@ -257,18 +257,70 @@ export function MatchProvider({ children, realtime }) {
         }
 
         // --- NORMAL MAÇ SÜRESİ ---
-        const nextSeconds = timer.seconds - 1;
+        // Gerçek zamanı bazlı kalan süre (reflerden) – daha hızlı ve hassas algılama
+        const elapsed = (Date.now() - timerStartRef.current) / 1000;
+        const realRemaining = secondsAtStartRef.current - elapsed;
 
         // 10 second countdown sound
-        if (nextSeconds <= 10 && nextSeconds > 0 && !timer.isRest) {
+        const nextDisplaySeconds = Math.max(0, Math.floor(realRemaining));
+        if (
+          nextDisplaySeconds <= 10 &&
+          nextDisplaySeconds > 0 &&
+          !timer.isRest &&
+          nextDisplaySeconds !== timer.seconds
+        ) {
           soundManager.playTick();
         }
 
-        // Time up
-        if (nextSeconds <= 0) {
+        // Time up (gerçek süre 0 veya geçtiğinde anında tetikle – normal süre veya mola)
+        if (realRemaining <= 0) {
           soundManager.playBuzzer();
 
-          // Determine round winner (round-wins tracking)
+          // --- MOLA SÜRESİ BİTTİ -> bir sonraki raunda geç (hakeman başlatmaz) ---
+          if (timer.isRest) {
+            const isBestOf3 = prev.settings.systemMode === 'best_of_3';
+            let matchWinner = null;
+            if (isBestOf3) {
+              if (prev.blue.roundWins >= 2) matchWinner = 'blue';
+              else if (prev.red.roundWins >= 2) matchWinner = 'red';
+            }
+
+            // Best of 3'de raund skorları sıfırlanır (devam eden maç için)
+            const nextBlueScore = isBestOf3 ? 0 : prev.blue.score;
+            const nextRedScore = isBestOf3 ? 0 : prev.red.score;
+            const nextBlueGamjeom = isBestOf3 ? 0 : prev.blue.gamjeom;
+            const nextRedGamjeom = isBestOf3 ? 0 : prev.red.gamjeom;
+
+            return {
+              ...prev,
+              blue: {
+                ...prev.blue,
+                score: nextBlueScore,
+                gamjeom: nextBlueGamjeom,
+                roundWins: prev.blue.roundWins,
+              },
+              red: {
+                ...prev.red,
+                score: nextRedScore,
+                gamjeom: nextRedGamjeom,
+                roundWins: prev.red.roundWins,
+              },
+              timer: {
+                ...timer,
+                seconds: timer.initialSeconds,
+                isRunning: false, // beklemede - hakem manuel başlatmalı
+                isRest: false,
+              },
+              round: {
+                ...prev.round,
+                current: prev.round.current + 1,
+                roundWinner: null,
+                winner: matchWinner,
+              },
+            };
+          }
+
+          // --- NORMAL RAUND SÜRESİ BİTTİ -> raund kazananı belirle ve mola başlat ---
           let roundWinner = null;
           if (prev.blue.score > prev.red.score) {
             roundWinner = 'blue';
@@ -283,52 +335,6 @@ export function MatchProvider({ children, realtime }) {
           const blueRoundWins = roundWinner === 'blue' ? prev.blue.roundWins + 1 : prev.blue.roundWins;
           const redRoundWins = roundWinner === 'red' ? prev.red.roundWins + 1 : prev.red.roundWins;
 
-          // If rest period ended -> prepare next round but WAIT for referee to start manually
-          // roundWins zaten round biterken artırılmıştı, burada tekrar artırmamalıyız
-          if (timer.isRest) {
-            const isBestOf3 = prev.settings.systemMode === 'best_of_3';
-            let matchWinner = null;
-            if (isBestOf3) {
-              if (prev.blue.roundWins >= 2) matchWinner = 'blue';
-              else if (prev.red.roundWins >= 2) matchWinner = 'red';
-            }
-
-            // Reset scores for next round (Best of 3)
-            const nextBlueScore = isBestOf3 ? 0 : prev.blue.score;
-            const nextRedScore = isBestOf3 ? 0 : prev.red.score;
-            const nextBlueGamjeom = isBestOf3 ? 0 : prev.blue.gamjeom;
-            const nextRedGamjeom = isBestOf3 ? 0 : prev.red.gamjeom;
-
-            return {
-              ...prev,
-              blue: {
-                ...prev.blue,
-                score: nextBlueScore,
-                gamjeom: nextBlueGamjeom,
-                roundWins: prev.blue.roundWins, // tekrar artırmama
-              },
-              red: {
-                ...prev.red,
-                score: nextRedScore,
-                gamjeom: nextRedGamjeom,
-                roundWins: prev.red.roundWins, // tekrar artırmama
-              },
-              timer: {
-                ...timer,
-                seconds: timer.initialSeconds,
-                isRunning: false, // beklemede - hakem başlatmalı
-                isRest: false,
-              },
-              round: {
-                ...prev.round,
-                current: prev.round.current + 1,
-                roundWinner: null,
-                winner: matchWinner,
-              },
-            };
-          }
-
-          // Round time ended -> increment winner's round count and check if match is over
           timerStartRef.current = Date.now();
           secondsAtStartRef.current = timer.restSeconds;
 
@@ -353,9 +359,9 @@ export function MatchProvider({ children, realtime }) {
             },
             timer: {
               ...timer,
-              seconds: matchWinner ? 0 : timer.restSeconds, // maç biterse süre 0, devam ediyorsa mola
-              isRunning: matchWinner ? false : true, // maç biterse timer durur
-              isRest: matchWinner ? false : true, // maç biterse mola yok
+              seconds: matchWinner ? 0 : timer.restSeconds,
+              isRunning: matchWinner ? false : true,
+              isRest: matchWinner ? false : true,
             },
             round: {
               ...prev.round,
@@ -365,15 +371,18 @@ export function MatchProvider({ children, realtime }) {
           };
         }
 
+        // Görünen saniyeyi sadece değiştiğinde güncelle (gereksiz renderleri azaltır)
+        if (nextDisplaySeconds === timer.seconds) return prev;
+
         return {
           ...prev,
           timer: {
             ...timer,
-            seconds: nextSeconds,
+            seconds: nextDisplaySeconds,
           },
         };
       });
-    }, 1000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [matchState.timer.isRunning]);

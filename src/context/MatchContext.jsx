@@ -530,12 +530,90 @@ export function MatchProvider({ children, realtime }) {
     });
   }, []);
 
+  // Raundı erken sonlandırıp mola başlatan ortak durum oluşturucu.
+  // Best of 3'de skor/ceza anında sıfırlanmaz; mola süresi sonunda sıfırlanır
+  // (var olan zaman-dolu raund sonu akışıyla aynı).
+  const buildEndRoundState = useCallback(
+    (prev, roundWinner, reasonText, fighterUpdates = {}) => {
+      const isBestOf3 = prev.settings.systemMode === 'best_of_3';
+      const blueRoundWins = roundWinner === 'blue' ? prev.blue.roundWins + 1 : prev.blue.roundWins;
+      const redRoundWins = roundWinner === 'red' ? prev.red.roundWins + 1 : prev.red.roundWins;
+
+      let matchWinner = null;
+      if (isBestOf3) {
+        if (blueRoundWins >= 2) matchWinner = 'blue';
+        else if (redRoundWins >= 2) matchWinner = 'red';
+      }
+
+      const logEntry = {
+        id: Date.now() + Math.random(),
+        time: prev.timer.seconds,
+        text: reasonText,
+        side: roundWinner,
+      };
+
+      return {
+        ...prev,
+        blue: {
+          ...prev.blue,
+          ...(fighterUpdates.blue || {}),
+          score: fighterUpdates.blue?.score ?? prev.blue.score,
+          gamjeom: fighterUpdates.blue?.gamjeom ?? prev.blue.gamjeom,
+          roundWins: blueRoundWins,
+        },
+        red: {
+          ...prev.red,
+          ...(fighterUpdates.red || {}),
+          score: fighterUpdates.red?.score ?? prev.red.score,
+          gamjeom: fighterUpdates.red?.gamjeom ?? prev.red.gamjeom,
+          roundWins: redRoundWins,
+        },
+        timer: {
+          ...prev.timer,
+          seconds: matchWinner ? 0 : prev.timer.restSeconds,
+          isRunning: matchWinner ? false : true,
+          isRest: matchWinner ? false : true,
+        },
+        round: {
+          ...prev.round,
+          roundWinner: roundWinner,
+          winner: matchWinner,
+          endReason: reasonText,
+        },
+        logs: [logEntry, ...prev.logs.slice(0, 19)],
+      };
+    },
+    []
+  );
+
   // Point scoring
   const addPoint = useCallback((fighter, points, label = 'Vuruş', judgeSlot = null) => {
     soundManager.playPoint(points);
     setMatchState((prev) => {
       const currentScore = prev[fighter].score;
       const newScore = Math.max(0, currentScore + points);
+
+      const nextBlue = fighter === 'blue' ? newScore : prev.blue.score;
+      const nextRed = fighter === 'red' ? newScore : prev.red.score;
+
+      // Best of 3: 15 puan farkında raund aniden sona erer (RSC) ve mola başlar
+      if (
+        prev.settings.systemMode === 'best_of_3' &&
+        !prev.timer.isRest &&
+        !prev.round.roundWinner &&
+        Math.abs(nextBlue - nextRed) >= 15
+      ) {
+        timerStartRef.current = Date.now();
+        secondsAtStartRef.current = prev.timer.restSeconds;
+        const roundWinner = nextBlue > nextRed ? 'blue' : 'red';
+        const winnerName = roundWinner === 'blue' ? prev.blue.name : prev.red.name;
+        return {
+          ...buildEndRoundState(prev, roundWinner, `15 PUAN FARK — ${winnerName} raund kazandı`, {
+            blue: { score: nextBlue },
+            red: { score: nextRed },
+          }),
+        };
+      }
 
       const logEntry = {
         id: Date.now() + Math.random(),
@@ -553,7 +631,7 @@ export function MatchProvider({ children, realtime }) {
         logs: [logEntry, ...prev.logs.slice(0, 19)],
       };
     });
-  }, []);
+  }, [buildEndRoundState]);
 
   const subtractPoint = useCallback((fighter, points = 1) => {
     setMatchState((prev) => ({
@@ -574,6 +652,9 @@ export function MatchProvider({ children, realtime }) {
       const nextGamjeom = prev[fighter].gamjeom + 1;
       const opponentNextScore = prev[opponent].score + 1;
 
+      const nextBlue = fighter === 'blue' ? prev.blue.score : opponentNextScore;
+      const nextRed = fighter === 'red' ? prev.red.score : opponentNextScore;
+
       const logEntry = {
         id: Date.now() + Math.random(),
         time: prev.timer.seconds,
@@ -581,11 +662,45 @@ export function MatchProvider({ children, realtime }) {
         side: fighter,
       };
 
-      // In WT Best of 3, 5 Gam-jeom in a round results in round loss (PUN)
-      let roundWinner = prev.round.roundWinner;
-      if (prev.settings.systemMode === 'best_of_3' && nextGamjeom >= 5) {
-        roundWinner = opponent;
-        soundManager.playBuzzer();
+      // Best of 3: 5 gam-jeom = diskalifike, karşı taraf raundu kazanır ve mola başlar
+      if (
+        prev.settings.systemMode === 'best_of_3' &&
+        !prev.timer.isRest &&
+        !prev.round.roundWinner &&
+        nextGamjeom >= 5
+      ) {
+        timerStartRef.current = Date.now();
+        secondsAtStartRef.current = prev.timer.restSeconds;
+        return {
+          ...buildEndRoundState(
+            prev,
+            opponent,
+            `5 CEZA — ${prev[fighter].name} diskalifike, ${prev[opponent].name} raund kazandı`,
+            {
+              [fighter]: { gamjeom: nextGamjeom },
+              [opponent]: { score: opponentNextScore },
+            }
+          ),
+        };
+      }
+
+      // Best of 3: ceza puanıyla 15 puan farkı oluştuysa raund sona erer ve mola başlar
+      if (
+        prev.settings.systemMode === 'best_of_3' &&
+        !prev.timer.isRest &&
+        !prev.round.roundWinner &&
+        Math.abs(nextBlue - nextRed) >= 15
+      ) {
+        timerStartRef.current = Date.now();
+        secondsAtStartRef.current = prev.timer.restSeconds;
+        const roundWinner = nextBlue > nextRed ? 'blue' : 'red';
+        const winnerName = roundWinner === 'blue' ? prev.blue.name : prev.red.name;
+        return {
+          ...buildEndRoundState(prev, roundWinner, `15 PUAN FARK — ${winnerName} raund kazandı`, {
+            [fighter]: { gamjeom: nextGamjeom },
+            [opponent]: { score: opponentNextScore },
+          }),
+        };
       }
 
       return {
@@ -600,12 +715,12 @@ export function MatchProvider({ children, realtime }) {
         },
         round: {
           ...prev.round,
-          roundWinner: roundWinner || prev.round.roundWinner,
+          roundWinner: prev.round.roundWinner,
         },
         logs: [logEntry, ...prev.logs.slice(0, 19)],
       };
     });
-  }, []);
+  }, [buildEndRoundState]);
 
   const subtractGamjeom = useCallback((fighter) => {
     const opponent = fighter === 'blue' ? 'red' : 'blue';

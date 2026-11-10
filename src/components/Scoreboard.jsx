@@ -419,6 +419,9 @@ export default function Scoreboard({ roomId = 'TKD-1', realtime }) {
           {isRest && (
             <div className="rest-badge">
               <span>MOLA / REST</span>
+              {matchState.round.endReason && (
+                <span className="rest-reason">{matchState.round.endReason}</span>
+              )}
             </div>
           )}
 

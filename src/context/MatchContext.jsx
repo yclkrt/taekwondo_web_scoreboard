@@ -108,7 +108,7 @@ function mergeWithDefaults(saved) {
   }
 }
 
-export function MatchProvider({ children, realtime }) {
+export function MatchProvider({ children, realtime, role = 'scoreboard' }) {
   const [matchState, setMatchState] = useState(() => {
     try {
       const saved = localStorage.getItem('tkd_match_state');
@@ -217,8 +217,10 @@ export function MatchProvider({ children, realtime }) {
     });
   }, []);
 
-  // Timer interval engine
+  // Timer interval engine – SADECE skorboard (master) çalıştırır.
+  // Mobil / hareketli cihazlar sadece senkronize state'i görüntüler, kendi sayacını çalıştırmaz.
   useEffect(() => {
+    if (role !== 'scoreboard') return;
     if (!matchState.timer.isRunning) return;
 
     const interval = setInterval(() => {
@@ -385,7 +387,7 @@ export function MatchProvider({ children, realtime }) {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [matchState.timer.isRunning]);
+  }, [role, matchState.timer.isRunning]);
 
   // Gerçek kalan süreyi milisaniye hassasiyetinde dondurur.
   // Durdurulmus ikunde son degeri dondurur (gorunen deger donar).

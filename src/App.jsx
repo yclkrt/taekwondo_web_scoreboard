@@ -94,7 +94,7 @@ export default function App() {
   });
 
   return (
-    <MatchProvider realtime={realtime}>
+    <MatchProvider realtime={realtime} role={params.role}>
       <AppContent
         role={params.role}
         slot={params.slot}
